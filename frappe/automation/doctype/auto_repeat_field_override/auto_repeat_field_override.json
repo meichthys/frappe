@@ -19,7 +19,7 @@
   },
   {
    "columns": 6,
-   "description": "Examples: <code>+7 days</code>, <code>+1 months</code> (date offset), <code>Open</code> (static), <code>{{ source.subject }} ({{ next_schedule_date }})</code> (Jinja).",
+   "description": "For Date / Datetime fields, use a relative offset (e.g. <code>+7 days</code>, <code>+1 months</code>) or a Jinja expression. Otherwise, supports plain values or Jinja with <code>doc</code> and <code>source</code>.",
    "fieldname": "value",
    "fieldtype": "Small Text",
    "in_list_view": 1,

@@ -50,10 +50,36 @@ frappe.ui.form.on("Auto Repeat", {
 		frappe.auto_repeat.render_schedule(frm);
 
 		frm.trigger("toggle_submit_on_creation");
+		frm.trigger("set_field_override_options");
 	},
 
 	reference_doctype: function (frm) {
 		frm.trigger("toggle_submit_on_creation");
+		frm.clear_table("field_overrides");
+		frm.refresh_field("field_overrides");
+		frm.trigger("set_field_override_options");
+	},
+
+	field_overrides_add: function (frm) {
+		frm.trigger("set_field_override_options");
+	},
+
+	set_field_override_options: function (frm) {
+		if (!frm.doc.reference_doctype || !frm.fields_dict.field_overrides) return;
+		frappe.model.with_doctype(frm.doc.reference_doctype, () => {
+			const options = [""];
+			frappe.get_meta(frm.doc.reference_doctype).fields.forEach((df) => {
+				if (frappe.model.no_value_type.includes(df.fieldtype)) return;
+				if (df.fieldtype === "Read Only") return;
+				if (df.read_only || df.is_virtual) return;
+				options.push({ label: df.label || df.fieldname, value: df.fieldname });
+			});
+			frm.fields_dict.field_overrides.grid.update_docfield_property(
+				"field",
+				"options",
+				options
+			);
+		});
 	},
 
 	toggle_submit_on_creation: function (frm) {
@@ -106,6 +132,12 @@ frappe.ui.form.on("Auto Repeat", {
 		} else {
 			frappe.msgprint(__("Please setup a message first"), __("Message not setup"));
 		}
+	},
+});
+
+frappe.ui.form.on("Auto Repeat Field Override", {
+	form_render: function (frm) {
+		frm.trigger("set_field_override_options");
 	},
 });
 
