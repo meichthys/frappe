@@ -217,6 +217,18 @@
    "fieldtype": "Table MultiSelect",
    "label": "Assignee",
    "options": "Auto Repeat User"
+  },
+  {
+   "fieldname": "field_overrides_section",
+   "fieldtype": "Section Break",
+   "label": "Field Overrides"
+  },
+  {
+   "description": "Specify fields of the source document whose values should be changed in the new document.<br><br><b>Examples:</b><ul><li><b>Date offsets</b> (Date/Datetime fields): <code>+7 days</code>, <code>+1 months</code>, <code>+1 years</code>, <code>-3 days</code> &mdash; relative to the next schedule date.</li><li><b>Static values</b>: <code>Open</code>, <code>1</code>, <code>user@example.com</code>.</li><li><b>Jinja</b>: <code>{{ source.subject }} ({{ next_schedule_date }})</code>, <code>{{ add_days(next_schedule_date, 14) }}</code>.</li></ul>Jinja context: <code>doc</code> (new), <code>source</code> (original), <code>next_schedule_date</code>, <code>today</code>, and <code>add_days</code> / <code>add_months</code> / <code>add_years</code> / <code>add_to_date</code>.",
+   "fieldname": "field_overrides",
+   "fieldtype": "Table",
+   "label": "Field Overrides",
+   "options": "Auto Repeat Field Override"
   }
  ],
  "links": [],
