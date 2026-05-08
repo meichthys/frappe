@@ -1,6 +1,7 @@
 # Copyright (c) 2018, Frappe Technologies Pvt. Ltd. and contributors
 # License: MIT. See LICENSE
 
+import re
 from datetime import timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -17,6 +18,9 @@ from frappe.desk.form.assign_to import add as assign_to
 from frappe.model.document import Document
 from frappe.utils import (
 	add_days,
+	add_months,
+	add_to_date,
+	add_years,
 	cstr,
 	get_first_day,
 	get_last_day,
@@ -28,6 +32,12 @@ from frappe.utils import (
 from frappe.utils.background_jobs import get_jobs
 from frappe.utils.jinja import validate_template
 from frappe.utils.user import get_system_managers
+
+DATE_FIELDTYPES = ("Date", "Datetime")
+RELATIVE_OFFSET_PATTERN = re.compile(
+	r"^\s*([+-]?\d+)\s*(day|days|week|weeks|month|months|year|years)\s*$",
+	re.IGNORECASE,
+)
 
 month_map = {"Monthly": 1, "Quarterly": 3, "Half-yearly": 6, "Yearly": 12}
 week_map = {
@@ -49,12 +59,16 @@ class AutoRepeat(Document):
 
 	if TYPE_CHECKING:
 		from frappe.automation.doctype.auto_repeat_day.auto_repeat_day import AutoRepeatDay
+		from frappe.automation.doctype.auto_repeat_field_override.auto_repeat_field_override import (
+			AutoRepeatFieldOverride,
+		)
 		from frappe.automation.doctype.auto_repeat_user.auto_repeat_user import AutoRepeatUser
 		from frappe.types import DF
 
 		assignee: DF.TableMultiSelect[AutoRepeatUser]
 		disabled: DF.Check
 		end_date: DF.Date | None
+		field_overrides: DF.Table[AutoRepeatFieldOverride]
 		frequency: DF.Literal[
 			"", "Daily", "Weekly", "Fortnightly", "Monthly", "Quarterly", "Half-yearly", "Yearly"
 		]
@@ -83,6 +97,7 @@ class AutoRepeat(Document):
 		self.validate_dates()
 		self.validate_email_id()
 		self.validate_auto_repeat_days()
+		self.validate_field_overrides()
 		self.set_dates()
 		self.update_auto_repeat_id()
 		self.unlink_if_applicable()
@@ -174,6 +189,42 @@ class AutoRepeat(Document):
 					plural, frappe.bold(", ".join(repeated_days))
 				)
 			)
+
+	def validate_field_overrides(self):
+		if not self.field_overrides:
+			return
+
+		ref_meta = frappe.get_meta(self.reference_doctype)
+		seen = set()
+		for row in self.field_overrides:
+			if not row.field:
+				continue
+			if row.field in seen:
+				frappe.throw(
+					_("Field {0} has been overridden more than once in row {1}.").format(
+						frappe.bold(row.field), row.idx
+					)
+				)
+			seen.add(row.field)
+
+			df = ref_meta.get_field(row.field)
+			if not df:
+				frappe.throw(
+					_("Field {0} in row {1} does not exist on {2}.").format(
+						frappe.bold(row.field), row.idx, self.reference_doctype
+					)
+				)
+			if df.fieldtype in ("Table", "Table MultiSelect"):
+				frappe.throw(
+					_("Child table fields cannot be overridden (row {0}: {1}).").format(
+						row.idx, frappe.bold(row.field)
+					)
+				)
+
+			value = row.value or ""
+			if df.fieldtype in DATE_FIELDTYPES and RELATIVE_OFFSET_PATTERN.match(value):
+				continue
+			validate_template(value)
 
 	def update_auto_repeat_id(self):
 		# check if document is already on auto repeat
@@ -303,11 +354,57 @@ class AutoRepeat(Document):
 
 		self.set_auto_repeat_period(new_doc)
 
+		self.apply_field_overrides(new_doc, reference_doc)
+
 		auto_repeat_doc = frappe.get_doc("Auto Repeat", self.name)
 
 		# for any action that needs to take place after the recurring document creation
 		# on recurring method of that doctype is triggered
 		new_doc.run_method("on_recurring", reference_doc=reference_doc, auto_repeat_doc=auto_repeat_doc)
+
+	def apply_field_overrides(self, new_doc, reference_doc):
+		if not self.field_overrides:
+			return
+
+		for row in self.field_overrides:
+			if not row.field:
+				continue
+
+			df = new_doc.meta.get_field(row.field)
+			if not df:
+				continue
+
+			value = self.resolve_override_value(row, df, new_doc, reference_doc)
+			new_doc.set(row.field, value)
+
+	def resolve_override_value(self, row, df, new_doc, reference_doc):
+		raw_value = row.value or ""
+
+		if df.fieldtype in DATE_FIELDTYPES:
+			match = RELATIVE_OFFSET_PATTERN.match(raw_value)
+			if match:
+				offset = int(match.group(1))
+				unit = match.group(2).lower().rstrip("s")
+				base_date = getdate(self.next_schedule_date or today())
+				return add_to_date(base_date, **{f"{unit}s": offset})
+
+		if "{" in raw_value:
+			return frappe.render_template(
+				raw_value,
+				{
+					"doc": new_doc,
+					"source": reference_doc,
+					"auto_repeat": self,
+					"next_schedule_date": getdate(self.next_schedule_date or today()),
+					"today": getdate(today()),
+					"add_days": add_days,
+					"add_months": add_months,
+					"add_years": add_years,
+					"add_to_date": add_to_date,
+				},
+			)
+
+		return raw_value
 
 	def set_auto_repeat_period(self, new_doc):
 		mcount = month_map.get(self.frequency)

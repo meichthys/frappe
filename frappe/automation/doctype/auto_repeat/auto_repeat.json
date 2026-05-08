@@ -26,6 +26,8 @@
   "assignee",
   "section_break_16",
   "repeat_on_days",
+  "field_overrides_section",
+  "field_overrides",
   "notification",
   "notify_by_email",
   "recipients",
@@ -217,6 +219,18 @@
    "fieldtype": "Table MultiSelect",
    "label": "Assignee",
    "options": "Auto Repeat User"
+  },
+  {
+   "fieldname": "field_overrides_section",
+   "fieldtype": "Section Break",
+   "label": "Field Overrides"
+  },
+  {
+   "description": "Specify fields of the source document whose values should be changed in the new document.<br><br>For Date / Datetime fields, you can use a relative offset like <code>+7 days</code>, <code>+1 months</code>, <code>+1 years</code> (relative to the next schedule date) instead of a fixed date.<br><br>For other fields, the value is rendered as a Jinja template with <code>doc</code> (new document), <code>source</code> (source document), <code>next_schedule_date</code>, and date helpers (<code>add_days</code>, <code>add_months</code>, <code>add_years</code>, <code>add_to_date</code>) available.",
+   "fieldname": "field_overrides",
+   "fieldtype": "Table",
+   "label": "Field Overrides",
+   "options": "Auto Repeat Field Override"
   }
  ],
  "links": [],

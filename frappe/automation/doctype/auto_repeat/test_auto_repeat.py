@@ -279,6 +279,72 @@ class TestAutoRepeat(IntegrationTestCase):
 			sorted(["Administrator", "Guest"]),
 		)
 
+	def test_field_overrides_static_value(self):
+		todo = frappe.get_doc(
+			doctype="ToDo", description="test field override static", assigned_by="Administrator"
+		).insert()
+
+		doc = make_auto_repeat(reference_document=todo.name)
+		doc.append("field_overrides", {"field": "description", "value": "overridden description"})
+		doc.save()
+
+		data = get_auto_repeat_entries(getdate(today()))
+		create_repeated_entries(data)
+		frappe.db.commit()
+
+		new_todo_name = frappe.db.get_value(
+			"ToDo", {"auto_repeat": doc.name, "name": ("!=", todo.name)}, "name"
+		)
+		new_todo = frappe.get_doc("ToDo", new_todo_name)
+		self.assertEqual(new_todo.description, "overridden description")
+
+	def test_field_overrides_relative_date(self):
+		doctype = "Test Date Override DocType"
+		create_dated_doctype(doctype)
+
+		source = frappe.get_doc(
+			doctype=doctype, title="source", target_date=today(), end_date=today()
+		).insert()
+
+		doc = make_auto_repeat(
+			reference_doctype=doctype,
+			reference_document=source.name,
+			frequency="Daily",
+			start_date=today(),
+		)
+		doc.append("field_overrides", {"field": "target_date", "value": "+7 days"})
+		doc.append("field_overrides", {"field": "end_date", "value": "+1 month"})
+		doc.save()
+
+		data = get_auto_repeat_entries(getdate(today()))
+		create_repeated_entries(data)
+		frappe.db.commit()
+
+		new_name = frappe.db.get_value(
+			doctype, {"auto_repeat": doc.name, "name": ("!=", source.name)}, "name"
+		)
+		new_doc = frappe.get_doc(doctype, new_name)
+
+		self.assertEqual(getdate(new_doc.target_date), getdate(add_days(today(), 7)))
+		self.assertEqual(getdate(new_doc.end_date), getdate(add_months(today(), 1)))
+
+	def test_field_overrides_invalid_field(self):
+		todo = frappe.get_doc(
+			doctype="ToDo", description="test invalid override", assigned_by="Administrator"
+		).insert()
+
+		doc = frappe.get_doc(
+			{
+				"doctype": "Auto Repeat",
+				"reference_doctype": "ToDo",
+				"reference_document": todo.name,
+				"frequency": "Daily",
+				"start_date": today(),
+				"field_overrides": [{"field": "non_existent_field", "value": "x"}],
+			}
+		)
+		self.assertRaises(frappe.ValidationError, doc.insert)
+
 	def test_auto_repeat_assignee_with_separate_documents(self):
 		todo = frappe.get_doc(
 			doctype="ToDo",
@@ -328,6 +394,35 @@ def make_auto_repeat(**args):
 			"repeat_on_days": args.days or [],
 		}
 	).insert(ignore_permissions=True)
+
+
+def create_dated_doctype(doctype):
+	if frappe.db.exists("DocType", doctype):
+		return
+	doc = frappe.get_doc(
+		{
+			"doctype": "DocType",
+			"__newname": doctype,
+			"module": "Custom",
+			"custom": 1,
+			"fields": [
+				{"fieldname": "title", "label": "Title", "fieldtype": "Data"},
+				{"fieldname": "target_date", "label": "Target Date", "fieldtype": "Date"},
+				{"fieldname": "end_date", "label": "End Date", "fieldtype": "Date"},
+			],
+			"permissions": [
+				{
+					"role": "System Manager",
+					"read": 1,
+					"write": 1,
+					"create": 1,
+					"delete": 1,
+				}
+			],
+		}
+	).insert()
+	doc.allow_auto_repeat = 1
+	doc.save()
 
 
 def create_submittable_doctype(doctype, submit_perms=1):
